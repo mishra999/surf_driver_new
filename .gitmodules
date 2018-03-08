@@ -1,0 +1,6 @@
+[submodule "anita-python"]
+	path = anita-python
+	url = https://github.com/barawn/anita-python
+[submodule "anita_python"]
+	path = anita_python
+	url = https://github.com/barawn/anita_python
