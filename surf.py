@@ -430,8 +430,8 @@ class SURF(ocpci.Device):
            }
 
 
-    def __init__(self, path="/sys/class/uio/uio0"):
-        ocpci.Device.__init__(self, path, 1*1024*1024)
+    def __init__(self, path=ocpci.Device.default_path()):
+        super(SURF, self).__init__(path, 1*1024*1024)
         self.spi  = spi.SPI(self, self.map['SPI_BASE'])
 	self.labc = LAB4_Controller(self, self.map['LAB4_CTRL_BASE'])
 	self.i2c  = surf_i2c.SURFi2c(self, self.map['RFP_BASE'])
