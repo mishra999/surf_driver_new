@@ -21,4 +21,5 @@ def do():
     dev.set_phase(2)
     dev.labc.automatch_phab(15)
     dev.status()
+    dev.dma_init(0, 1024*1024)
     return dev
