@@ -1,3 +1,7 @@
+# fix the backend first
+from anita_python import ocpci
+ocpci.set_backend(ocpci.ocpci_vfio)
+
 import surf
 import sys
 

@@ -273,7 +273,18 @@ class LAB4_Controller:
         def testpattern(self, lab4, pattern=0xBA6):
             self.l4reg(lab4, 13, pattern)
             return [lab4, pattern]
-        
+
+        '''
+        Enable test-pattern data into readout RAM (prints out counter)
+        '''
+        def readout_testpattern_mode(self, enable=True):
+                ctrl = bf(self.read(self.map['CONTROL']))
+                if enable:
+                        ctrl[15] = 1
+                else:
+                        ctrl[15] = 0
+                self.write(self.map['CONTROL'], ctrl)
+    
         def read(self, addr):
 		return self.dev.read(addr + self.base)
     
@@ -427,6 +438,7 @@ class SURF(ocpci.Device):
             'LAB4_CTRL_BASE'            : 0x10000,
 	    'LAB4_ROM_BASE'             : 0x20000,      
             'RFP_BASE'                  : 0x30000,
+            'DMA_BASE'                  : 0x40000
            }
 
 
@@ -581,6 +593,7 @@ class SURF(ocpci.Device):
         print "**********************"
         print "LAB4 runmode: %s" % ("enabled" if labcontrol[1] else "not enabled")
         print "LAB4 testpat: %s" % ("enabled" if not labreadout[4] else "not enabled")
+        print "LAB4 readout testpat: %s" % ("enabled" if labcontrol[15] else "not enabled")
     
     def set_vped(self, value=0x9C4):
         self.i2c.set_vped(value)
@@ -591,6 +604,113 @@ class SURF(ocpci.Device):
         sample0  = val[15:0]
         sample1  = val[31:16]
         return int(sample0), int(sample1)
+
+    # DMA a full board's worth of data.
+    def dma_event(self, lab, samples=1024):
+        board_data = []
+        for i in xrange(12):
+                labdata=np.zeros(samples, dtype=np.int)
+                board_data.append(labdata)
+        ioaddr = 0
+        # SUPER MEGA SPEED
+        # we split up the DMA buffer into two buffers of 8192 bytes (this is the max theoretical to read out from a LAB,
+        # even if you can't do it)
+        # then we DMA into one half while unpacking the other half.
+        for i in xrange(12):
+                self.write(self.map['DMA_BASE'], self.map['LAB4_ROM_BASE']+(i<<11))
+                # ping-pong between first 4096 bytes and second 4096 bytes
+                # cache line size is 64 bytes, so no cache issues I think
+                self.write(self.map['DMA_BASE']+0x4, ioaddr+(8192*(i&1)))
+                self.write(self.map['DMA_BASE']+0x8, (samples>>1)-1)
+                self.write(self.map['DMA_BASE']+0xC, 1)
+                # If we're not loop #0, unpack the previous data
+                if i:
+                        labdata = board_data[i-1]
+                        # obviously this is a mod 2 operation so can add instead of subtract
+                        offset = 8192*((i+1)&1)
+                        for i in range(0, int(samples), 2):                                
+                                labdata[i+1], labdata[i] = struct.unpack("<HH", self.dma_read(4, offset))
+                                offset = offset+4
+                        
+                val = bf(self.read(self.map['DMA_BASE']+0xC))
+                ntries = 0
+                while not val[2]:
+                        if val[3]:
+                                print 'DMA error occurred: ', hex(int(val))
+                                # issue abort
+                                self.write(self.map['DMA_BASE']+0xC, 0x10)
+                                return None
+                        if ntries > 10000:
+                                print 'DMA timeout? : ', hex(int(val))
+                                # issue abort
+                                self.write(self.map['DMA_BASE']+0xC, 0x10)
+                                return None
+                        ntries = ntries + 1
+                        val = bf(self.read(self.map['DMA_BASE']+0xC))
+                        
+        # OK, so now we've DMA'd all of the event data, but we need to unpack the last one
+        labdata = board_data[11]
+        offset = 8192
+        for i in range(0, int(samples), 2):
+                labdata[i+1], labdata[i] = struct.unpack("<HH", self.dma_read(4, offset))
+                offset = offset + 4
+        return board_data                                
+        
+
+    # DMA a single lab's worth of data.
+    def dma_lab(self, lab, samples=1024):
+        # need something here to determine if the backend has DMA enabled and also to check the DMA address, I guess
+        labdata=np.zeros(samples, dtype=np.int)
+        # this is the board's I/O address in the IOMMU
+        ioaddr = 0
+        # write source address
+        self.write(self.map['DMA_BASE'], self.map['LAB4_ROM_BASE']+(lab<<11))
+        # write destination address
+        self.write(self.map['DMA_BASE']+0x4, ioaddr)
+        # write number of samples minus 1
+        self.write(self.map['DMA_BASE']+0x8, (samples>>1)-1)
+        # initiate DMA
+        self.write(self.map['DMA_BASE']+0xC, 1)
+        time.sleep(30E-6)
+        val = bf(self.read(self.map['DMA_BASE']+0xC))
+        ntries = 0
+        while not val[2]:
+                ntries = ntries + 1
+                if val[3]:
+                        print 'DMA error occurred: ', hex(int(val))
+                        # issue abort
+                        self.write(self.map['DMA_BASE']+0xC, 0x10)
+                        return None
+                if ntries > 10000:
+                        print 'DMA timeout? : ', hex(int(val))
+                        # issue abort
+                        self.write(self.map['DMA_BASE']+0xC, 0x10)
+                        return None
+                time.sleep(30E-6)                
+                val = bf(self.read(self.map['DMA_BASE']+0xC))
+                
+        # Note: unpacking means sample0 gets stuck in [31:16], and sample1 gets stuck in [15:0] (first write in most significant bits)
+        offset = 0
+        for i in range(0, int(samples), 2):
+                labdata[i+1], labdata[i] = struct.unpack("<HH", self.dma_read(4, offset))
+                offset = offset + 4
+
+        return labdata                
+
+    def pio_lab(self, lab, samples=1024):
+        labdata = np.zeros(samples, dtype=np.int)
+        for i in range(0, int(samples), 2):
+                tries=0
+                while (self.labc.check_fifo(1) && (1<<chan)):
+                        if tries > max_tries:
+                                print 'no data available'
+                                break
+                        else:
+                                tries=tries+1
+                                time.sleep(0.005)
+
+                labdata[i+1], labdata[i] = self.read_fifo(chan)
+        return labdata
 
     def log_lab(self, lab, samples=1024, force_trig=False, save=False, filename=''):
         max_tries=10
@@ -616,20 +736,10 @@ class SURF(ocpci.Device):
                         tries=tries+1
         '''               
         for chan in labs:
-                labdata=np.zeros(samples, dtype=np.int)
-                for i in range(0, int(samples), 2):
-                        tries=0
-                        while(self.labc.check_fifo(1) & (1<<chan) ):
-                                if tries > max_tries:
-                                        print 'no data available'
-                                        break
-                                else:
-                                        tries=tries+1
-                                        time.sleep(0.005)
-                                        #print 'lab %i fifo was emptied, read out %i samples, trying again' % (chan, i)
-                                
-                        labdata[i+1], labdata[i] = self.read_fifo(chan)
-                        
+                # programmed I/O transfer
+                labdata=self.pio_lab(chan, samples)
+                # DMA transfer
+                # labdata=self.dma_lab(chan, samples)
                 board_data.append(labdata )
 
         #save some data to a flat text file
