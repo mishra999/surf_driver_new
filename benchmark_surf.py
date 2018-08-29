@@ -15,7 +15,7 @@ class benchmarker:
             nloops = nloops-1
             self.dev.write(0x4000C, 1)
             val = self.dev.read(0x4000C)
-            if not (val & 0x4):
+            while not (val & 0x4):
                 val = self.dev.read(0x4000C)
         end_time = time.time()
         total_bytes = 2048*total_loops
@@ -34,11 +34,11 @@ class benchmarker:
             nloops = nloops-1
             self.dev.labc.force_trigger()
             val = self.dev.labc.check_fifo(True)
-            if not (val & 0x1):
+            while (val & 0x1):
                 val = self.dev.labc.check_fifo(True)
             self.dev.write(0x4000C, 1)
             val = self.dev.read(0x4000C)
-            if not (val & 0x4):
+            while not (val & 0x4):
                 val = self.dev.read(0x4000C)
         end_time = time.time()
         total_bytes = 2048*total_loops
@@ -60,7 +60,7 @@ class benchmarker:
             nloops = nloops-1
             self.dev.write(0x4000C, 1)
             val = self.dev.read(0x4000C)
-            if not (val & 0x4):
+            while not (val & 0x4):
                 val = self.dev.read(0x4000C)
             total_data[ptr:ptr+2048] = self.dev.dma_read(2048)
             ptr = ptr + 2048
@@ -84,11 +84,11 @@ class benchmarker:
             nloops = nloops-1
             self.dev.labc.force_trigger()
             val = self.dev.labc.check_fifo(True)
-            if not (val & 0x1):
+            while (val & 0x1):
                 val = self.dev.labc.check_fifo(True)            
             self.dev.write(0x4000C, 1)
             val = self.dev.read(0x4000C)
-            if not (val & 0x4):
+            while not (val & 0x4):
                 val = self.dev.read(0x4000C)
             total_data[ptr:ptr+2048] = self.dev.dma_read(2048)
             ptr = ptr + 2048
@@ -98,7 +98,7 @@ class benchmarker:
         total_time = end_time - start_time
         throughput = (total_bytes/total_time)
         print "total time: ", total_time, " throughput: ", throughput, " bytes/sec (", throughput/(1024.*1024.), " MB/s)"        
-        
+        return total_data
         
     def time_event(self, nloops):
         total_loops = nloops
