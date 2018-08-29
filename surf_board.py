@@ -13,6 +13,8 @@ def do():
     dev.identify()
     print 'path:', dev.path
     dev.labc.run_mode(0)
+    # set the event size (FIFO empty = (event_size/2)-1)
+    dev.labc.set_fifo_empty(511)
     dev.labc.reset_fifo()
     dev.labc.reset_ramp()    
     dev.i2c.default_config()

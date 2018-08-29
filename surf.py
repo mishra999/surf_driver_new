@@ -25,6 +25,7 @@ class LAB4_Controller:
                 'PHASEPB'                       : 0x0003C,
 		'TRIGGER'			: 0x00054,
                 'READOUT'                       : 0x00058,
+                'READOUTEMPTY'                  : 0x0005C,
                 'pb'				: 0x0007C,
                 }
         amon = { 'Vbs'                      : 0,
@@ -302,6 +303,9 @@ class LAB4_Controller:
                 else:
                         return rdout[3]
 
+        def set_fifo_empty(self, threshold):
+                self.write(self.map['READOUTEMPTY'], threshold)
+                
         def dll(self, lab4, mode=False, sstoutfb=104):
                 '''enable/disable dll by setting VanN level'''
                 if mode:
@@ -607,11 +611,14 @@ class SURF(ocpci.Device):
 
     # DMA a full board's worth of data.
     def dma_event(self, lab, samples=1024):
+        if not self.dma_enabled():
+                print "DMA is not enabled"
+                return None
         board_data = []
         for i in xrange(12):
                 labdata=np.zeros(samples, dtype=np.int)
                 board_data.append(labdata)
-        ioaddr = 0
+        ioaddr = self.dma_base()
         # SUPER MEGA SPEED
         # we split up the DMA buffer into two buffers of 8192 bytes (this is the max theoretical to read out from a LAB,
         # even if you can't do it)
@@ -660,18 +667,21 @@ class SURF(ocpci.Device):
     # DMA a single lab's worth of data.
     def dma_lab(self, lab, samples=1024):
         # need something here to determine if the backend has DMA enabled and also to check the DMA address, I guess
+        if not self.dma_enabled():
+                print "DMA is not enabled."
+                return None
+        
         labdata=np.zeros(samples, dtype=np.int)
         # this is the board's I/O address in the IOMMU
         ioaddr = 0
         # write source address
         self.write(self.map['DMA_BASE'], self.map['LAB4_ROM_BASE']+(lab<<11))
         # write destination address
-        self.write(self.map['DMA_BASE']+0x4, ioaddr)
+        self.write(self.map['DMA_BASE']+0x4, self.dma_base())
         # write number of samples minus 1
         self.write(self.map['DMA_BASE']+0x8, (samples>>1)-1)
         # initiate DMA
         self.write(self.map['DMA_BASE']+0xC, 1)
-        time.sleep(30E-6)
         val = bf(self.read(self.map['DMA_BASE']+0xC))
         ntries = 0
         while not val[2]:
@@ -686,7 +696,6 @@ class SURF(ocpci.Device):
                         # issue abort
                         self.write(self.map['DMA_BASE']+0xC, 0x10)
                         return None
-                time.sleep(30E-6)                
                 val = bf(self.read(self.map['DMA_BASE']+0xC))
                 
         # Note: unpacking means sample0 gets stuck in [31:16], and sample1 gets stuck in [15:0] (first write in most significant bits)
@@ -699,9 +708,10 @@ class SURF(ocpci.Device):
 
     def pio_lab(self, lab, samples=1024):
         labdata = np.zeros(samples, dtype=np.int)
+        
         for i in range(0, int(samples), 2):
                 tries=0
-                while (self.labc.check_fifo(1) && (1<<chan)):
+                while (self.labc.check_fifo(1) and (1<<chan)):
                         if tries > max_tries:
                                 print 'no data available'
                                 break
@@ -712,8 +722,61 @@ class SURF(ocpci.Device):
                 labdata[i+1], labdata[i] = self.read_fifo(chan)
         return labdata
 
+    def dma_lab_events(self, lab, nevents, samples=1024, force_trig=False, save=False, filename=''):
+        if not self.dma_enabled():
+                print "DMA not enabled"
+                return None
+        
+        # allocate the buffer
+        raw_data=bytearray(nevents*samples*2)
+        # write source address
+        self.write(self.map['DMA_BASE'], self.map['LAB4_ROM_BASE']+(lab<<11))
+        # write destination address
+        self.write(self.map['DMA_BASE']+0x4, self.dma_base())
+        # write number of samples minus 1
+        self.write(self.map['DMA_BASE']+0x8, (samples>>1)-1)
+        control_addr = self.map['DMA_BASE']+0xC
+        ptr = 0
+        increment = samples*2
+        endptr = ptr + increment
+        while nevents:
+                nevents = nevents - 1
+                if force_trig:
+                        self.labc.force_trigger()
+                        max_tries=1000
+                        val=self.labc.check_fifo(True)
+                        while val & (1<<lab):
+                                val = self.labc.check_fifo(True)
+                                max_tries = max_tries -1
+                                if not max_tries:
+                                        print 'no data after trigger'
+                                        break                        
+                else:
+                        # maybe do some weird timeout-y thing here.
+                        # time-check overhead is only 240 ns, so maybe worth it?
+                        val=self.labc.check_fifo(True)                
+                        while val & (1<<lab):
+                                val = self.labc.check_fifo(True)
+                self.write(control_addr, 1)
+                # need a timeout here too?
+                val = self.read(control_addr)
+                if not (control_addr & 0x4):
+                        val = self.read(control_addr)
+                raw_data[ptr:endptr] = self.dma_read(increment)
+                ptr = ptr + increment
+                endptr = ptr + increment
+        if save:
+                if len(filename)<=1:
+                        timestr=time.strftime('%Y%m%d-%H%M%S')
+                        filename= timestr+'_LAB'+str(lab)+'.dat'
+                with open(filename, 'wb') as newFile:
+                        newFile.write(raw_data)
+
+        return raw_data
+        
+                        
     def log_lab(self, lab, samples=1024, force_trig=False, save=False, filename=''):
-        max_tries=10
+        max_tries=1000
         labs=[]
         if lab==15:
                 labs = range(12)
@@ -722,7 +785,7 @@ class SURF(ocpci.Device):
   
         if force_trig:
                 self.labc.force_trigger()
-
+                        
         board_data = []
         tries=0
         '''
