@@ -741,6 +741,14 @@ class SURF(ocpci.Device):
         endptr = ptr + increment
         while nevents:
                 nevents = nevents - 1
+                # Force trigger if requested,
+                # then wait for the FIFO to fill.
+                # Note that we wait until the *entire* FIFO
+                # fills, because the current setup is stupid.
+                # (Obviously the readout FIFO should be placed
+                # inside the 'DMA controller' so you don't
+                # double-copy data. But because we want to maintain
+                # PIO access for non-VFIO systems, we're being dumb.)
                 if force_trig:
                         self.labc.force_trigger()
                         max_tries=1000
@@ -760,7 +768,7 @@ class SURF(ocpci.Device):
                 self.write(control_addr, 1)
                 # need a timeout here too?
                 val = self.read(control_addr)
-                if not (control_addr & 0x4):
+                if not (val & 0x4):
                         val = self.read(control_addr)
                 raw_data[ptr:endptr] = self.dma_read(increment)
                 ptr = ptr + increment
