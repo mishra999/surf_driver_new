@@ -33,15 +33,18 @@ class LabDaq:
         time.sleep(1)
         # acquire pedestals. this is soo easy
         print "Pedestal run...",        
+        self.pedestalRun()
+        print "complete."
+
+    def pedestalRun(self):
         dataset = self.getStrippedForceTriggerData(1000)
         # reshape to 2500x4096... (note, this is O(1) in speed!)
         pedData = np.reshape(dataset['data'],(250,4096))
         # and average (this is vectorized!)
         self.pedestals = np.mean(pedData, 0)
         # plus get an integer copy
-        self.intPedestals = np.array(self.pedestals).astype('int16')
-        print "complete."
-
+        self.intPedestals = np.array(self.pedestals).astype('int16')        
+        
     def stopAcq(self):
         """ Stop the acquisition. """
         self.dev.labc.run_mode(0)
@@ -121,20 +124,22 @@ class LabDaq:
             eventHeaders = headers[i]
             buffer = (eventHeaders[0] & 0xC000)>>12
             windows = np.arange(buffer*8, (buffer+1)*8)
-            startBlock = -1
+            triggerBlock = -1
             for j in xrange(8):
                 if eventHeaders[j] & 0x2000:
-                    startBlock=j
+                    triggerBlock=j
                     break
-            if startBlock == -1:
-                print "Could not find start bit for event %d!!" % i
+            if triggerBlock == -1:
+                print "Could not find trigger bit for event %d!!" % i
                 return None
-            # roll the data
-            data[i]=np.roll(data[i], 128*startBlock)
-            # dataset['data'][1024*i:1024*(i+1)]=np.roll(dataset['data'][1024*i:1024*(i+1)],
-            #                                            128*startBlock)
+            # roll the data. The trigger bit block goes at the end, so it's 7-triggerBlock.
+            # np.roll rotates "right", so takes samples at end and puts at beginning
+            # i.e. if triggerBlock=7, do nothing
+            # if triggerBlock=6, roll 128 samples (so [896:1023],[0:895])
+            # if triggerBlock=0, roll 896 samples (so [128:1023],[0:127])
+            data[i]=np.roll(data[i], (7-triggerBlock)*128)
             # roll the windows
-            windows = np.roll(windows, startBlock)
+            windows = np.roll(windows, (7-triggerBlock))
             # append the windows to the set
             dataset['windows'].append(windows)
 

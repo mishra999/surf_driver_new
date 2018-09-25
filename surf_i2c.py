@@ -43,6 +43,11 @@ class SURFi2c:
                '0.25'       : 5}
                
     def __init__(self, dev, base):
+        # SURF prototype check
+        if dev.dna() == 0x4090c13d97054:
+            self.has_rfp = False
+        else:
+            self.has_rfp = True
         self.dac = i2c.I2C(dev, base + self.i2c_map['DAC'], 0x60)
 	self.ioexpander = i2c.I2C(dev, base + self.i2c_map['DAC'], 0x20)
         '''
@@ -113,11 +118,15 @@ class SURFi2c:
             (dac_bytes[19] & 0xF) << 8 | dac_bytes[20], (dac_bytes[22] & 0xF) << 8 | dac_bytes[23] ) 
 
     def read_rfp(self, pointer_reg, lab):
+        if not self.has_rfp:
+            return None
         self.rfp[lab].write_seq([pointer_reg])
         rfp_register = self.rfp[lab].read_seq(2)
         return bf((rfp_register[0] << 8) | rfp_register[1])
 
     def rfp_conversion(self, lab):
+        if not self.has_rfp:
+            return None
         if not self.read_rfp(0x1, lab)[15]:
             return True
         else:
@@ -125,6 +134,8 @@ class SURFi2c:
    
     def config_rfp(self, continuous_mode=True, data_rate=2, input_mux=3, pga_gain=2,
                    thresh_lo=0x8000, thresh_hi=0x7FFF):
+        if not self.has_rfp:
+            return
         rfp_config_register=0x1
         rfp_lothresh_register=0x2
         rfp_hithresh_register=0x3
@@ -178,10 +189,13 @@ class SURFi2c:
             
     def default_config(self):
         self.config_ioexpander()
-        self.config_rfp()
+        if self.has_rfp:
+            self.config_rfp()
 
     def run_rfp(self, lab, run_time=5.0, plot=False):
-        
+        if not self.has_rfp:
+            return None
+
         my_rfp = []
         my_rfp.append(RFPdata(lab))
             

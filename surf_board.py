@@ -20,6 +20,7 @@ def do():
     dev.i2c.default_config()
     dev.clock(dev.internalClock)
     dev.labc.default()
+    dev.labc.dll(15, mode=True)
     dev.set_phase(2)
     dev.labc.automatch_phab(15)
     dev.status()
