@@ -739,6 +739,9 @@ class SURF(ocpci.Device):
         ptr = 0
         increment = samples*2
         endptr = ptr + increment
+
+        # buffer check
+        buf = (self.labc.read(0) & 0xC0) >> 6        
         while nevents:
                 nevents = nevents - 1
                 # Force trigger if requested,
@@ -750,6 +753,11 @@ class SURF(ocpci.Device):
                 # double-copy data. But because we want to maintain
                 # PIO access for non-VFIO systems, we're being dumb.)
                 if force_trig:
+                        # buffer check
+                        last_buf = buf
+                        temp = self.labc.read(0)
+                        if ((temp&0xC0)>>6) != buf:
+                                print "warning: last buf was %d but changed to %d before trigger" % (last_buf, (tmp&0xC0)>>6)
                         self.labc.force_trigger()
                         max_tries=1000
                         val=self.labc.check_fifo(True)
@@ -758,7 +766,11 @@ class SURF(ocpci.Device):
                                 max_tries = max_tries -1
                                 if not max_tries:
                                         print 'no data after trigger'
-                                        break                        
+                                        break
+                        # buffer check
+                        buf = (self.labc.read(0) & 0xC0) >> 6
+                        if buf != ((last_buf+1) & 0x3):
+                                print "warning: last buf %d cur buf %d" % (last_buf, buf)
                 else:
                         # maybe do some weird timeout-y thing here.
                         # time-check overhead is only 240 ns, so maybe worth it?

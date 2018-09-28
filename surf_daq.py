@@ -122,7 +122,7 @@ class LabDaq:
         dataset['windows'] = []
         for i in xrange(count):
             eventHeaders = headers[i]
-            buffer = (eventHeaders[0] & 0xC000)>>12
+            buffer = (eventHeaders[0] & 0xC000)>>14
             windows = np.arange(buffer*8, (buffer+1)*8)
             triggerBlock = -1
             for j in xrange(8):
@@ -148,3 +148,42 @@ class LabDaq:
 
     def datasetEvents(self, dataset, eventSize=1024):
         return np.reshape(dataset['data'], (dataset['count'], eventSize))
+
+def buildTransferCurve(daq, start, stop, step):
+    # Measured slew rate is something like 5 ADC channels in 600 events
+    # or 120 events/channel.
+
+    # stdev of a measurement is ~+/- 2 channels, so knocking it down
+    # a factor of 20 gets you +/- 0.1 channel resolution.
+
+    # create the list of values
+    vals = xrange(start, stop, step)
+    # create the array to store them in
+    res = np.ndarray(shape=(len(vals),4096), dtype=float)
+    # index of the loop
+    idx=0
+    for val in vals:
+        daq.dev.set_vped(val)
+        time.sleep(1)
+        events = 1600
+
+        print "Taking %d events for value %d" % (events, val)
+
+        # get the data
+        dataset = daq.getStrippedForceTriggerData(events)
+        # rearrange the data into a 4096x400 array (cells[0] is a list of 400 measurements)
+        cells = np.reshape(dataset['data'], (400, 4096)).transpose()
+        # take the mean along the measurement axis (0) and store it in the results
+        means = np.mean(cells, axis=0)
+        print "this is an array of length %d" % len(means)
+        print "results is an array of length %d" % len(res[idx])
+        res[idx] = np.mean(cells, axis=0)            
+        idx = idx + 1
+    # flop the array so that the result gives
+    # res[0] = {y-values for cell 0}
+    # res[1] = {y-values for cell 1}
+    return res.transpose()
+    
+            
+            
+            
