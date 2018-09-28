@@ -20,10 +20,12 @@ def stripHeaders(event):
 
 class LabDaq:
     # do something to select a SURF or something...
-    def __init__(self, lab):
+    def __init__(self, lab, curveCorrect=False):
         self.lab = lab
         self.dev = surf_board.do()
+        self.curveCorrect = curveCorrect
         self.pedestals=np.zeros(lab_length)
+        self.pedfit = []
         self.dev.labc.reset_fifo()
         self.dev.labc.testpattern_mode(0)
         self.dev.labc.readout_testpattern_mode(0)
@@ -31,10 +33,15 @@ class LabDaq:
         print "Starting up..."
         # startup wait, I guess
         time.sleep(1)
-        # acquire pedestals. this is soo easy
-        print "Pedestal run...",        
-        self.pedestalRun()
-        print "complete."
+        if curveCorrect:
+            print "Transfer curve run...",
+            self.transferRun()
+            print "complete."
+        else:
+            # acquire pedestals. this is soo easy
+            print "Pedestal run...",        
+            self.pedestalRun()
+            print "complete."
 
     def pedestalRun(self):
         dataset = self.getStrippedForceTriggerData(1000)
@@ -44,7 +51,22 @@ class LabDaq:
         self.pedestals = np.mean(pedData, 0)
         # plus get an integer copy
         self.intPedestals = np.array(self.pedestals).astype('int16')        
-        
+        # build the (fake) fits
+        for i in xrange(4096):
+            self.pedfit.append(np.poly1d([1,-1*self.intPedestals[i]]))
+
+    def transferRun(self):
+        curve = self.buildTransferCurve(2000, 3000, 100)
+        x = np.arange(2000, 3000, 100)
+        pedfits = []
+        for i in xrange(4096):            
+            # fit voltage = f(code)
+            res = np.polyfit(curve[i], x, 2)
+            pedfits.append(np.poly1d(res))
+            self.pedestals[i] = pedfits[i](2500)
+        self.intPedestals = np.array(self.pedestals).astype('int16')
+        self.pedfits = pedfits
+            
     def stopAcq(self):
         """ Stop the acquisition. """
         self.dev.labc.run_mode(0)
@@ -75,9 +97,21 @@ class LabDaq:
         dataset['headers'] = headers
         return dataset
 
+    def curveCorrection(self, dataset):
+        count = len(dataset['data'])
+        startBuffer = (dataset['headers'][0] & 0xC000) >> 12
+        idx = 1024*startBuffer
+        for i in xrange(count):
+            dataset['data'][i] = self.pedfits[idx](dataset['data'][i])
+            idx = (idx + 1) % 4096
+        return dataset
+            
     def getSubtractedForceTriggerData(self,count=10000):
         """ Get a dataset of force triggers, pedestal subtracted. """
         dataset = self.getStrippedForceTriggerData(count)
+        if self.curveCorrect:
+            return self.curveCorrection(dataset)
+        
         # keep track of where we are
         eventNumber=0
         # find out what's the first buffer we have.
@@ -89,7 +123,7 @@ class LabDaq:
             peds = np.reshape(self.intPedestals,(4,1024))
             buffer = startBuffer
             for i in xrange(count):
-                data[i] -= peds[i]
+                data[i] -= peds[buffer]
                 buffer = (buffer + 1) % 4
             return dataset
 
@@ -149,41 +183,81 @@ class LabDaq:
     def datasetEvents(self, dataset, eventSize=1024):
         return np.reshape(dataset['data'], (dataset['count'], eventSize))
 
-def buildTransferCurve(daq, start, stop, step):
-    # Measured slew rate is something like 5 ADC channels in 600 events
-    # or 120 events/channel.
+    def buildTransferCurve(self, start, stop, step):
+        # Measured slew rate is something like 5 ADC channels in 600 events
+        # or 120 events/channel.
 
-    # stdev of a measurement is ~+/- 2 channels, so knocking it down
-    # a factor of 20 gets you +/- 0.1 channel resolution.
+        # stdev of a measurement is ~+/- 2 channels, so knocking it down
+        # a factor of 20 gets you +/- 0.1 channel resolution.
 
-    # create the list of values
-    vals = xrange(start, stop, step)
-    # create the array to store them in
-    res = np.ndarray(shape=(len(vals),4096), dtype=float)
-    # index of the loop
-    idx=0
-    for val in vals:
-        daq.dev.set_vped(val)
-        time.sleep(1)
-        events = 1600
+        # create the list of values
+        vals = xrange(start, stop, step)
+        # create the array to store them in
+        res = np.ndarray(shape=(len(vals),4096), dtype=float)
+        # index of the loop
+        idx=0
+        for val in vals:
+            self.dev.set_vped(val)
+            time.sleep(1)
+            events = 1600
 
-        print "Taking %d events for value %d" % (events, val)
+            print "Taking %d events for value %d" % (events, val)
 
-        # get the data
-        dataset = daq.getStrippedForceTriggerData(events)
-        # rearrange the data into a 4096x400 array (cells[0] is a list of 400 measurements)
-        cells = np.reshape(dataset['data'], (400, 4096)).transpose()
-        # take the mean along the measurement axis (0) and store it in the results
-        means = np.mean(cells, axis=0)
-        print "this is an array of length %d" % len(means)
-        print "results is an array of length %d" % len(res[idx])
-        res[idx] = np.mean(cells, axis=0)            
-        idx = idx + 1
-    # flop the array so that the result gives
-    # res[0] = {y-values for cell 0}
-    # res[1] = {y-values for cell 1}
-    return res.transpose()
+            # get the data
+            dataset = self.getStrippedForceTriggerData(events)
+            # rearrange the data into a 4096x400 array (cells[0] is a list of 400 measurements)
+            cells = np.reshape(dataset['data'], (400, 4096)).transpose()
+            # take the mean along the measurement axis (0) and store it in the results
+            means = np.mean(cells, axis=1)
+            print "this is an array of length %d" % len(means)
+            print "results is an array of length %d" % len(res[idx])
+            res[idx] = means
+            idx = idx + 1
+        # flop the array so that the result gives
+        # res[0] = {y-values for cell 0}
+        # res[1] = {y-values for cell 1}
+
+        # reset to vped default
+        self.dev.set_vped(2500)
+        return res.transpose()
     
-            
-            
+def zeroCrossings(dataset):
+    # Reshape into arrays of 128, and then transpose. So each row
+    # is now the same sample, iterated over all the dataset.
+    # e.g. cell[0] is an array of all of the samples of cell[0]
+    cells = np.reshape(dataset['data'], (dataset['count']*8, 128)).transpose()
+    # is the cell negative?
+    cellIsNegative = cells <= 0
+    # is the cell positive?
+    cellIsPositive = cells > 0
+    # shift the positive condition to the left one
+    # (so cellIsPositive[0] is cell 1)
+    cellIsPositive = np.roll(cellIsPositive, -1, axis=0)
+    # detect rising edge
+    risingEdge = cellIsPositive*cellIsNegative
+    # average all rising edges
+    zeroCrossingFraction = np.mean(risingEdge, axis=1)
+
+    # We have to redo this for the seams, because the previous method
+    # rolled the cells along the window boundary.
+    # We *might* be able to all do this in one, but skip it.
+    cells = np.reshape(dataset['data'], (dataset['count'],1024)).transpose()
+    # So now we strip out the seams, and only the seams
+    # Numpy's slicing does this for us.
+    # Start at 127, stop before 1023.
+    beforeSeam = cells[127:1023:128]
+    # Start at 128, no need to stop (1024 is past bounds)
+    afterSeam = cells[128::128]
+
+    beforeSeamNegative = beforeSeam <= 0
+    afterSeamPositive = afterSeam > 0
+
+    seamRising = beforeSeamNegative * afterSeamPositive
+    seamEdgeFraction = np.mean(seamRising)
+    zeroCrossingFraction[127] = seamEdgeFraction
+    
+    return zeroCrossingFraction
+
+
+    
             
