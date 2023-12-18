@@ -21,7 +21,7 @@ class benchmarker:
         total_bytes = 2048*total_loops
         total_time = end_time - start_time
         throughput = (total_bytes/total_time)
-        print "total time: ", total_time, " throughput: ", throughput, " bytes/sec (", throughput/(1024.*1024.), " MB/s)"
+        print ("total time: ", total_time, " throughput: ", throughput, " bytes/sec (", throughput/(1024.*1024.), " MB/s)")
 
     def time_dma_and_trigger(self, nloops):
         total_loops = nloops
@@ -44,7 +44,7 @@ class benchmarker:
         total_bytes = 2048*total_loops
         total_time = end_time - start_time
         throughput = (total_bytes/total_time)
-        print "total time: ", total_time, " throughput: ", throughput, " bytes/sec (", throughput/(1024.*1024.), " MB/s)"
+        print ("total time: ", total_time, " throughput: ", throughput, " bytes/sec (", throughput/(1024.*1024.), " MB/s)")
 
         
     # benchmark doing a DMA and copying the data to a Python object (no processing)
@@ -67,9 +67,10 @@ class benchmarker:
             
         end_time = time.time()
         total_bytes = len(total_data)
+        print('data= ',total_data)
         total_time = end_time - start_time
         throughput = (total_bytes/total_time)
-        print "total time: ", total_time, " throughput: ", throughput, " bytes/sec (", throughput/(1024.*1024.), " MB/s)"        
+        print ("total time: ", total_time, " throughput: ", throughput, " bytes/sec (", throughput/(1024.*1024.), " MB/s)")        
 
     # benchmark doing a DMA and copying the data to a Python object (no processing)
     def time_trigger_and_copy(self, nloops):
@@ -97,7 +98,7 @@ class benchmarker:
         total_bytes = len(total_data)
         total_time = end_time - start_time
         throughput = (total_bytes/total_time)
-        print "total time: ", total_time, " throughput: ", throughput, " bytes/sec (", throughput/(1024.*1024.), " MB/s)"        
+        print ("total time: ", total_time, " throughput: ", throughput, " bytes/sec (", throughput/(1024.*1024.), " MB/s)")        
         return total_data
         
     def time_event(self, nloops):
@@ -111,7 +112,7 @@ class benchmarker:
         total_bytes = 2048*total_loops
         total_time = end_time - start_time
         throughput = (total_bytes/total_time)
-        print "total time: ", total_time, " throughput: ", throughput, " bytes/sec (", throughput/(1024.*1024.), " MB/s)"
+        print( "total time: ", total_time, " throughput: ", throughput, " bytes/sec (", throughput/(1024.*1024.), " MB/s)")
 
 
         

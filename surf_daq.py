@@ -1,11 +1,13 @@
 # SURF data acquisition. Replacement for SurfData.
 
 import surf_board
+import surf_board1
 import numpy as np
 import time
 from threading import Thread, Event
 import surf_dataset
 import surf_analysis
+# import matplotlib.sc
 
 lab_length=4096
 
@@ -33,7 +35,7 @@ class AcquisitionWorker(Thread):
         autotrigger = self.autotrigger
         
         if not self.dev.dma_enabled():
-            print "DMA not supported, can't start thread."
+            print ("DMA not supported, can't start thread.")
             return None
 
         increment = self.samples*12*2
@@ -49,16 +51,16 @@ class AcquisitionWorker(Thread):
         while self.nevents > 0 and not self.stopper.is_set():
             if autotrigger:
                 if verbose:
-                    print "worker: triggering"
+                    print ("worker: triggering")
                 self.dev.labc.force_trigger()
                     
             if verbose:
-                print "worker: %d events remaining, waiting for event" % self.nevents
+                print ("worker: %d events remaining, waiting for event" % self.nevents)
             # wait for an interrupt
             ret = self.dev.irq_wait()
 
             if verbose:
-                print "worker: (ret %d) got event, beginning DMA" % ret
+                print ("worker: (ret %d) got event, beginning DMA" % ret)
             # begin dma
             self.dev.write(0x4000C, 0x1)
             # re-prep the next DMA
@@ -70,7 +72,7 @@ class AcquisitionWorker(Thread):
             # and wait again
             ret = self.dev.irq_wait()
             if verbose:
-                print "worker: (ret %d) DMA complete" % ret
+                print ("worker: (ret %d) DMA complete" % ret)
             # clear the DMA interrupt
             self.dev.write(0x4000C, 0x20)
 
@@ -87,7 +89,7 @@ class AcquisitionWorker(Thread):
 
         if self.stopper.is_set():
             if verbose:
-                print "worker stopped at %d events" % self.nevents
+                print ("worker stopped at %d events" % self.nevents)
 
 
 def stripHeaders(event):
@@ -95,7 +97,7 @@ def stripHeaders(event):
     nsamples=len(event)
     nblocks=int(nsamples/128)
     headers=[]    
-    for i in xrange(nblocks):
+    for i in range(nblocks):
         header=event[128*i] & 0xf000
         headers.append(header)
         event[128*i:128*i+128] -= header
@@ -103,7 +105,7 @@ def stripHeaders(event):
     return headers
 
 class SurfDaq:
-    def __init__(self, calFilePrefix="proto_cal"):
+    def __init__(self, calFilePrefix=None): #"proto_cal"
         """ Create a SurfDaq from a bunch of calibration files with calFilePrefix (followed by lab number.npz). """
         self.dev = surf_board.do()
         self.pedestals=np.zeros((12, lab_length))
@@ -113,24 +115,24 @@ class SurfDaq:
         self.dev.set_vped(2500)
 
         if calFilePrefix is not None:
-            for lab in xrange(12):                
+            for lab in range(12):                
                 filename = calFilePrefix + str(lab) + ".npz"
-                print "Loading calibrations for LAB%d from %s" % (lab, filename)
+                print ("Loading calibrations for LAB%d from %s" % (lab, filename))
                 cal = np.load(filename)
                 trims = cal['trim'].astype('int')
                 fb = cal['vtrimfb']
-                for i in xrange(128):
+                for i in range(128):
                     self.dev.labc.l4reg(lab,256+i,trims[i])
                 if fb is not None:
                     self.dev.labc.l4reg(lab,11, fb)
                 
                 
         self.dev.labc.run_mode(1)        
-        print "Starting up..."
+        print ("Starting up...")
         time.sleep(2)
-        print "Pedestal run...",
-        self.pedestalRun()
-        print "complete."
+        print ("Pedestal run..."),
+        self.pedestalRun() #by me
+        print ("complete.")
 
     def resetAcq(self):
         """ stop/start acquisition """
@@ -149,7 +151,7 @@ class SurfDaq:
     def eventsPerTrigger(self, per):
         """ Set the number of events for every trigger. """
         if per < 1 or per > 3:
-            print "must be between 1 and 3"
+            print ("must be between 1 and 3")
             return
         self.dev.labc.repeat_count(per-1)
 
@@ -164,8 +166,10 @@ class SurfDaq:
         self.eventsPerTrigger(1)
         self.startAcq()
         dataset = self.getStrippedForceTriggerData(1000)
+        # print(dataset['data'])
+        print('length of data', len(dataset['data']))
         # reshape to 250x4x12x1024
-        byevent = np.reshape(dataset['data'], (250, 4, 12, 1024))
+        byevent = np.reshape(dataset['data'], (250, 4, 1, 1024)) #(250, 4, 12, 1024)
         # transpose to 12x250x4x1024
         eventbylab = byevent.transpose(2, 0, 1, 3)
         # So now index[0] is LAB, index[1] is quad-event, index[2] is buffer (4 buffers per event), and index[3] is sample
@@ -173,7 +177,7 @@ class SurfDaq:
         # And now average along index 1
         pedDataByBuffer = np.mean(eventbylab, 1)
         # and reshape (this actually copies, because it's non-contiguous)
-        pedData = np.reshape(pedDataByBuffer, (12, 4096))
+        pedData = np.reshape(pedDataByBuffer, (1, 4096)) #(12, 4096)
 
         # and we're done
         self.updatePedestals(pedData)
@@ -209,14 +213,14 @@ class SurfDaq:
         headersByLab = dataset['headers'].reshape((dataset['count'],12,8))
         # find out what's the first buffer we have. (event 0 lab 0 window 0)
         startBuffer = (headersByLab[0][0][0] & 0xC000) >> 14
-        print "Starting with buffer %d." % startBuffer
+        print( "Starting with buffer %d." % startBuffer)
         # special-case less than 4 events        
         if count < 4:
             buffer = startBuffer
             # Recast our arrays in terms of events (blocks of 12288)
             data = np.reshape(dataset['data'],(count,12288))
             peds = self.intPedestalsByBuffer
-            for i in xrange(count):
+            for i in range(count):
                 data[i] -= peds[buffer]
                 buffer = (buffer + 1) % 4
             return dataset
@@ -248,18 +252,18 @@ class SurfDaq:
         data = np.reshape(dataset['data'],(count,12,1024))
         # create empty windows array
         dataset['windows'] = []
-        for i in xrange(count):
-            for lab in xrange(12):
+        for i in range(count):
+            for lab in range(12):
                 eventHeaders = headers[i][lab]
                 buffer = (eventHeaders[0] & 0xC000)>>14
                 windows = np.arange(buffer*8, (buffer+1)*8)
                 triggerBlock = -1
-                for j in xrange(8):
+                for j in range(8):
                     if eventHeaders[j] & 0x2000:
                         triggerBlock=j
                         break
                 if triggerBlock == -1:
-                    print "Could not find trigger bit for event %d!!" % i
+                    print( "Could not find trigger bit for event %d!!" % i)
                     return None
                 # roll the data. The trigger bit block goes at the end, so it's 7-triggerBlock.
                 # np.roll rotates "right", so takes samples at end and puts at beginning
@@ -283,26 +287,30 @@ class SurfDaq:
     
     def getRawForceTriggerData(self,count=1000):
         """ Get a dataset of force triggers, returned raw. """
-        dat = self.dev.dma_events(count, 1024, force_trig=True)
-        print "Acquisition complete."
+        # dat = self.dev.dma_lab_events(lab=15,nevents=count, samples=1024, force_trig=True)
+        self.dev.labc.force_trigger()
+        dat = self.dev.dma_event(samples=1024)
+        # dat = self.dev.log_lab(lab=15, samples=1024, force_trig=True, save=False)
+        print ("Acquisition complete.")
+        print('dataset raw=', dat[0:100])
         return surf_dataset.buildDataset(dat, count)
 
     def getStrippedForceTriggerData(self,count=1000):
         """ Get a dataset of force triggers, headers stripped. """
         dataset = self.getRawForceTriggerData(count)
-        print "Stripping headers."
+        print ("Stripping headers.")
         return self.processStripHeaders(dataset)
 
     def getSubtractedForceTriggerData(self,count=1000):
         """ Get a dataset of force triggers, pedestal subtracted. """
         dataset = self.getStrippedForceTriggerData(count)
-        print "Subtracting pedestals."
+        print ("Subtracting pedestals.")
         return self.processSubtractPedestals(dataset)
 
     def getForceTriggerData(self, count=1000):
         """ Get a dataset of force triggers, fully processed. """
         dataset = self.getSubtractedForceTriggerData(count)
-        print "Reordering windows."
+        print ("Reordering windows.")
         return self.processOrderWindows(dataset)
 
     ## Convenience functions for triggered data
@@ -354,7 +362,7 @@ class LabDaq:
     # do something to select a SURF or something...
     def __init__(self, lab, curveCorrect=False, calFile=None):
         self.lab = lab
-        self.dev = surf_board.do()
+        self.dev = surf_board1.do(lab)
         
         self.curveCorrect = curveCorrect
         self.pedestals=np.zeros(lab_length)
@@ -363,40 +371,45 @@ class LabDaq:
         self.dev.labc.testpattern_mode(0)
         self.dev.labc.readout_testpattern_mode(0)
         self.dev.labc.run_mode(1)
-        print "Loading calibration file..."
+        print ("Loading calibration file...")
         if calFile is not None:
             cals = np.load(calFile)
             update_trims_one(self, lab, cals['trim'].astype('int'), cals['vtrimfb'])
-        print "Starting up..."
+        print ("Starting up...")
         # startup wait, I guess
         time.sleep(2)
         if curveCorrect:
-            print "Transfer curve run...",
+            print ("Transfer curve run..."),
             self.transferRun()
-            print "complete."
+            print ("complete.")
         else:
             # acquire pedestals. this is soo easy
-            print "Pedestal run...",        
+            print ("Pedestal run..."),        
             self.pedestalRun()
-            print "complete."
+            print ("complete.")
 
     def pedestalRun(self):
-        dataset = self.getStrippedForceTriggerData(1000)
+        self.eventsPerTrigger(1)
+        # dataset = self.getStrippedForceTriggerData(1000)
+        dataset = self.getRawForceTriggerData(count=1000)
+        print(dataset[0:10])
+        np.savetxt('data_txt', dataset)
         # reshape to 2500x4096... (note, this is O(1) in speed!)
-        pedData = np.reshape(dataset['data'],(250,4096))
+        # pedData = np.reshape(dataset['data'],(250,4096))
+        # print(pedData[0])
         # and average (this is vectorized!)
-        self.pedestals = np.mean(pedData, 0)
-        # plus get an integer copy
-        self.intPedestals = np.array(self.pedestals).astype('int16')        
-        # build the (fake) fits
-        for i in xrange(4096):
-            self.pedfit.append(np.poly1d([1,-1*self.intPedestals[i]]))
+        # self.pedestals = np.mean(pedData, 0)
+        # # plus get an integer copy
+        # self.intPedestals = np.array(self.pedestals).astype('int16')        
+        # # build the (fake) fits
+        # for i in range(4096):
+        #     self.pedfit.append(np.poly1d([1,-1*self.intPedestals[i]]))
 
     def transferRun(self):
         curve = self.buildTransferCurve(2000, 3000, 100)
         x = np.arange(2000, 3000, 100)
         pedfits = []
-        for i in xrange(4096):            
+        for i in range(4096):            
             # fit voltage = f(code)
             res = np.polyfit(curve[i], x, 2)
             pedfits.append(np.poly1d(res))
@@ -412,6 +425,13 @@ class LabDaq:
         """ Start the acquisition """
         self.dev.labc.reset_fifo()
         self.dev.labc.run_mode(1)
+
+    def eventsPerTrigger(self, per):
+        """ Set the number of events for every trigger. """
+        if per < 1 or per > 3:
+            print ("must be between 1 and 3")
+            return
+        self.dev.labc.repeat_count(per-1)
 
     def processStripHeaders(self, dataset):
         """ strip headers from dataset """
@@ -477,8 +497,8 @@ class LabDaq:
                     triggerBlock=j
                     break
             if triggerBlock == -1:
-                print "Could not find trigger bit for event %d!!" % i
-                print "I'm skipping this event, and marking it as an error"
+                print ("Could not find trigger bit for event %d!!" % i)
+                print ("I'm skipping this event, and marking it as an error")
                 if not 'errors' in dataset:
                     dataset['errors'] = []
                 dataset['errors'].append(i)
@@ -500,12 +520,16 @@ class LabDaq:
     
     def getRawForceTriggerData(self,count=10000):
         """ Get a dataset of force triggers, returned raw. """
+        # dat = self.dev.pio_lab(self.lab, samples=102)
+        # print('data from pio_lab',dat)
         dat = self.dev.dma_lab_events(self.lab, count, 1024, True, False)
+        print(dat)
         npdat = np.frombuffer(dat, dtype='uint16')
-        dataset = {}
-        dataset['data'] = npdat
-        dataset['count'] = count
-        return dataset
+        # print(npdat[0:100])
+        # dataset = {}
+        # dataset['data'] = npdat
+        # dataset['count'] = count
+        return dat
 
     def getStrippedForceTriggerData(self,count=10000):
         """ Get a dataset of force triggers, headers stripped. """
@@ -553,7 +577,7 @@ class LabDaq:
             time.sleep(1)
             events = 1600
 
-            print "Taking %d events for value %d" % (events, val)
+            print ("Taking %d events for value %d" % (events, val))
 
             # get the data
             dataset = self.getStrippedForceTriggerData(events)
@@ -561,8 +585,8 @@ class LabDaq:
             cells = np.reshape(dataset['data'], (400, 4096)).transpose()
             # take the mean along the measurement axis (0) and store it in the results
             means = np.mean(cells, axis=1)
-            print "this is an array of length %d" % len(means)
-            print "results is an array of length %d" % len(res[idx])
+            print ("this is an array of length %d" % len(means))
+            print ("results is an array of length %d" % len(res[idx]))
             res[idx] = means
             idx = idx + 1
         # flop the array so that the result gives
@@ -611,19 +635,19 @@ def tune(times, trims,start=0,stop=127,scale=1):
             trim_adjustment = trim_adjustment*2
         # we adjust trim i+1 for time i
         updated_trims[i+1] = trims[i+1] + trim_adjustment*scale
-        print "sample %d %f ps: %d -> %d" % (i, times[i], trims[i+1], updated_trims[i+1])
+        print ("sample %d %f ps: %d -> %d" % (i, times[i], trims[i+1], updated_trims[i+1]))
         if updated_trims[i+1] > max_trim:
-            print "sample %d maxed out" % i
+            print ("sample %d maxed out" % i)
             updated_trims[i+1] = max_trim
         elif updated_trims[i+1] < 0:
-            print "sample %d minned out" % i
+            print ("sample %d minned out" % i)
             updated_trims[i+1] = 0
     return updated_trims
 
 def update_trims_one(daq, lab, trims, fb=None):
     """ Convenience function to update trims on a LabDaq. """
     daq.stopAcq()
-    for i in xrange(128):
+    for i in range(128):
         daq.dev.labc.l4reg(lab,256+i,trims[i])
     if fb is not None:
         daq.dev.labc.l4reg(lab,11, fb)
@@ -632,12 +656,12 @@ def update_trims_one(daq, lab, trims, fb=None):
 def update_all_trims(daq, trims, fbs=None):
     """ Convenience function to update all trims on a SurfDaq. """
     daq.stopAcq()
-    for lab in xrange(12):
-        for cell in xrange(128):
+    for lab in range(12):
+        for cell in range(128):
             daq.dev.labc.l4reg(lab,256+cell, trims[lab][cell])
     if fbs is not None:
-        for lab in xrange(12):
-            print "set vtrimfb %d to %d" % (lab, fbs[lab])
+        for lab in range(12):
+            print ("set vtrimfb %d to %d" % (lab, fbs[lab]))
             daq.dev.labc.l4reg(lab, 11, fbs[lab])
     daq.startAcq()
 
@@ -666,11 +690,11 @@ def tuneOutliers(daq, iterations, trims, fb, samples=10000, frequency=235.e6):
     while it < iterations and outliers > 0:
         times = daq.getTimes(samples)
         stdev = np.std(times[0:127])
-        print "pass %d stdev %f" % (it, stdev)
+        print ("pass %d stdev %f" % (it, stdev))
         if stdev < 5:
             stdev = 5
         if np.abs(times[127]-312.5) > 3*stdev:
-            print "feedback is an outlier (%f)" % times[127]
+            print ("feedback is an outlier (%f)" % times[127])
             diff = times[127]-312.5
             delta = 0
             if np.abs(diff) > 100:
@@ -686,10 +710,10 @@ def tuneOutliers(daq, iterations, trims, fb, samples=10000, frequency=235.e6):
             outliers = 0            
             for cell in xrange(127):
                 if np.abs(times[cell]-312.5) > 2*stdev:
-                    print "cell %d is an outlier (%f)" % (cell, times[cell])
+                    print ("cell %d is an outlier (%f)" % (cell, times[cell]))
                     trims = tune(times, trims, cell, cell+1, 4)
                     outliers = outliers + 1
-            print "pass %d, %d outliers" % (it, outliers)
+            print ("pass %d, %d outliers" % (it, outliers))
             it = it + 1
         trims=trims.astype('int')
         update_trims_one(daq, lab, trims, fb)
@@ -721,7 +745,7 @@ def tuneLoop(daq, iterations, samples=10000, trims=None, fb=None, frequency=235.
     #    lowering other trim DACs = times[126] goes up    
     lab = daq.lab
     if trims is None:
-        print "Finding initial starting points."
+        print ("Finding initial starting points.")
         startPoint = 2000
         trims = np.full(128, startPoint)
         trims[0] = 0
@@ -734,7 +758,7 @@ def tuneLoop(daq, iterations, samples=10000, trims=None, fb=None, frequency=235.
         # *negative*)
         # The loop tune is slow enough that it shouldn't happen, I hope
         while np.sum(times[0:127]) > 39900:
-            print "Feedback LAB%d way off (%f): %d -> %d" % (lab, 40000-np.sum(times[0:127]), fb, fb-20)
+            print ("Feedback LAB%d way off (%f): %d -> %d" % (lab, 40000-np.sum(times[0:127]), fb, fb-20))
             fb -= 20
             update_trims_one(daq, lab, trims, fb)
             times = daq.getTimes(samples)
@@ -746,16 +770,16 @@ def tuneLoop(daq, iterations, samples=10000, trims=None, fb=None, frequency=235.
         while slowSample > 290 or seamSample > 350 or seamSample < 290:
             if seamSample < 290 or seamSample > 350:
                 delta = 5 if seamSample > 350 else -5
-                print "Feedback LAB%d: %f (%d -> %d)" % (lab, seamSample, fb, fb+delta)
+                print ("Feedback LAB%d: %f (%d -> %d)" % (lab, seamSample, fb, fb+delta))
                 fb = fb + delta
             elif slowSample > 290:
-                print "Starting LAB%d: %f (%d -> %d)" % (lab, slowSample, trims[1], trims[1]+25)
+                print ("Starting LAB%d: %f (%d -> %d)" % (lab, slowSample, trims[1], trims[1]+25))
                 trims[1:127] += 25
             update_trims_one(daq, lab, trims, fb)
             times = daq.getTimes(samples)
             slowSample=times[126]
             seamSample=times[127]
-        print "LAB%d: starting point %d (slow=%f) feedback %d (%f)" % (lab, trims[1], slowSample, fb, seamSample)        
+        print ("LAB%d: starting point %d (slow=%f) feedback %d (%f)" % (lab, trims[1], slowSample, fb, seamSample) )       
 
     update_trims_one(daq, lab, trims, fb)
     it=0
@@ -772,7 +796,7 @@ def tuneLoop(daq, iterations, samples=10000, trims=None, fb=None, frequency=235.
         if trimHistory is not None:
             trimHistory[it] = times
 
-        print "std: %f ps" % np.std(times)
+        print( "std: %f ps" % np.std(times))
         seamSample = times[127]
         # just coarse adjust the seam, hopefully this is good enough
         if np.abs(seamSample-312.5) > 20:
@@ -784,23 +808,23 @@ def tuneLoop(daq, iterations, samples=10000, trims=None, fb=None, frequency=235.
                 delta = 7 if diff > 0 else -7
             else:
                 delta = 3 if diff > 0 else -3
-            print "Feedback LAB%d: %f (%d -> %d)" % (lab, seamSample, fb, fb+delta)
+            print ("Feedback LAB%d: %f (%d -> %d)" % (lab, seamSample, fb, fb+delta))
             fb = fb + delta
         else:
             trims = tune(times, trims)
             trims = trims.astype('int')
             it = it + 1
         update_trims_one(daq, lab, trims, fb)
-    for i in xrange(len(trims)):
-        print "trim[%d]=%d" % (i, trims[i])
-    print "vtrimfb = %d" % fb
+    for i in range(len(trims)):
+        print ("trim[%d]=%d" % (i, trims[i]))
+    print ("vtrimfb = %d" % fb)
     return (trims, fb)
 
 def tuneAllLoop(daq, iterations, samples=1000, trims=None, fbs=None, frequency=235.e6):
     """ Doesn't work yet, don't use this.
     """
     if trims is None:
-        print "Finding initial starting points."
+        print ("Finding initial starting points.")
         startPoint = 2100
         trims = np.full((12,128), startPoint)
         trims.transpose()[0] = 0
@@ -812,27 +836,27 @@ def tuneAllLoop(daq, iterations, samples=1000, trims=None, fbs=None, frequency=2
         while any(np.greater(allSlowSamples, 290)) or any(np.greater(allSeamSamples, 290)) or any(np.less(allSeamSamples, 350)):
             for lab in xrange(12):
                 if allSeamSamples[lab] < 290 or allSeamSamples[lab] > 350:
-                    print "Feedback LAB%d: %f (%d)" % (lab, allSeamSamples[lab], fbs[lab])
+                    print ("Feedback LAB%d: %f (%d)" % (lab, allSeamSamples[lab], fbs[lab]))
                     if allSeamSamples[lab] < 290:
                         fbs[lab] -= 5
                     else:
                         fbs[lab] += 5
                 elif allSlowSamples[lab] > 290.:
-                    print "LAB%d's slow sample: %f, baseline %d->%d" % (lab, allSlowSamples[lab], trims[lab][1], trims[lab][1]+25)
+                    print ("LAB%d's slow sample: %f, baseline %d->%d" % (lab, allSlowSamples[lab], trims[lab][1], trims[lab][1]+25))
                     trims[lab][1:127] += 25
             update_all_trims(daq, trims, fbs)
             times = getTimes(daq, samples)
             allSlowSamples = times[:,126]
             allSeamSamples = times[:,127]
-        print "Baseline starting points:"
+        print ("Baseline starting points:")
         for lab in xrange(12):
-            print "LAB%d: %d (%f %f)" % (lab, trims[lab][1], allSlowSamples[lab], times[lab][127])
+            print ("LAB%d: %d (%f %f)" % (lab, trims[lab][1], allSlowSamples[lab], times[lab][127]))
         return
-    for it in xrange(iterations):
+    for it in range(iterations):
         times = getTimes(daq, samples)
-        for lab in xrange(12):
+        for lab in range(12):
             trims[lab] = tune(times[lab], trims[lab])
         update_all_trims(daq, trims, fbs)
     times = getTimes(daq, samples)
-    for lab in xrange(12):
-        print "LAB%d RMS %f ps" % (lab, np.std(times[lab]))
+    for lab in range(12):
+        print ("LAB%d RMS %f ps" % (lab, np.std(times[lab])))

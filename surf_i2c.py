@@ -49,7 +49,7 @@ class SURFi2c:
         else:
             self.has_rfp = True
         self.dac = i2c.I2C(dev, base + self.i2c_map['DAC'], 0x60)
-	self.ioexpander = i2c.I2C(dev, base + self.i2c_map['DAC'], 0x20)
+        self.ioexpander = i2c.I2C(dev, base + self.i2c_map['DAC'], 0x20)
         '''
         12 RFP circuits on 4 i2c buses. Slave address set by ADDR pin connection:
         GND: 1001000
@@ -107,15 +107,15 @@ class SURFi2c:
     def read_dac(self):
         self.dac.start(read_mode=True)
         dac_bytes=self.dac.read_seq(24)
-        print "Reading from MCP4728..."
-        print "DAC channel A (RFP_VPED_0):  register is set to 0x{0:x}, EEPROM is set to 0x{0:x}".format(
-            (dac_bytes[1] & 0xF) << 8 | dac_bytes[2], (dac_bytes[4] & 0xF) << 8 | dac_bytes[5] ) 
-        print "DAC channel B (RFP_VPED_1):  register is set to 0x{0:x}, EEPROM is set to 0x{0:x}".format(
-            (dac_bytes[7] & 0xF) << 8 | dac_bytes[8], (dac_bytes[10] & 0xF) << 8 | dac_bytes[11] ) 
-        print "DAC channel C (RFP_VPED_2):  register is set to 0x{0:x}, EEPROM is set to 0x{0:x}".format(
-            (dac_bytes[13] & 0xF) << 8 | dac_bytes[14], (dac_bytes[16] & 0xF) << 8 | dac_bytes[17] )
-        print "DAC channel D (VPED)      :  register is set to 0x{0:x}, EEPROM is set to 0x{0:x}".format(
-            (dac_bytes[19] & 0xF) << 8 | dac_bytes[20], (dac_bytes[22] & 0xF) << 8 | dac_bytes[23] ) 
+        print( "Reading from MCP4728...")
+        print ("DAC channel A (RFP_VPED_0):  register is set to 0x{0:x}, EEPROM is set to 0x{0:x}".format(
+            (dac_bytes[1] & 0xF) << 8 | dac_bytes[2], (dac_bytes[4] & 0xF) << 8 | dac_bytes[5] ) )
+        print ("DAC channel B (RFP_VPED_1):  register is set to 0x{0:x}, EEPROM is set to 0x{0:x}".format(
+            (dac_bytes[7] & 0xF) << 8 | dac_bytes[8], (dac_bytes[10] & 0xF) << 8 | dac_bytes[11] ) )
+        print( "DAC channel C (RFP_VPED_2):  register is set to 0x{0:x}, EEPROM is set to 0x{0:x}".format(
+            (dac_bytes[13] & 0xF) << 8 | dac_bytes[14], (dac_bytes[16] & 0xF) << 8 | dac_bytes[17] ))
+        print ("DAC channel D (VPED)      :  register is set to 0x{0:x}, EEPROM is set to 0x{0:x}".format(
+            (dac_bytes[19] & 0xF) << 8 | dac_bytes[20], (dac_bytes[22] & 0xF) << 8 | dac_bytes[23] ) )
 
     def read_rfp(self, pointer_reg, lab):
         if not self.has_rfp:
@@ -155,17 +155,17 @@ class SURFi2c:
             #verify write (NOTE: top bit different for read/write in config reguster, so not compared!)
             ########  ( the top bit 15: indicates a `conversion in process' if [0] or not if [1] )
             if self.read_rfp(rfp_config_register, i)[14:0] != bf((config_hi << 8) | config_lo)[14:0]:
-                print 'rfp %i error: write/read mismatch to config register' % i
+                print ('rfp %i error: write/read mismatch to config register' % i)
 
             self.rfp[i].write_seq([rfp_lothresh_register, bf(thresh_lo)[15:8], bf(thresh_lo)[7:0]])
             self.wait(0.01)
             if self.read_rfp(rfp_lothresh_register, i)[15:0] != bf(thresh_lo)[15:0]:
-                print 'rfp %i error: write/read mismatch to low-thresh register' % i
+                print ('rfp %i error: write/read mismatch to low-thresh register' % i)
 
             self.rfp[i].write_seq([rfp_hithresh_register, bf(thresh_hi)[15:8], bf(thresh_hi)[7:0]])
             self.wait(0.01)
             if self.read_rfp(rfp_hithresh_register, i)[15:0] != bf(thresh_hi)[15:0]:
-                print 'rfp %i error: write/read mismatch to hi-thresh register' % i
+                print ('rfp %i error: write/read mismatch to hi-thresh register' % i)
 
     def config_ioexpander(self, latch_inputs=True):
         config=[]

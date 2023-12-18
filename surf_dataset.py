@@ -10,13 +10,13 @@ def buildDataset(dat, count):
 def loadDataset(filename):
     file = np.load(filename)
     if not 'count' in file or not 'data' in file:
-        print "error, file doesn't have count and data"
+        print ("error, file doesn't have count and data")
         return None
     return file
 
 def saveDataset(dataset, filename):
     if not 'count' in dataset or not 'data' in dataset:
-        print "error, dataset doesn't even have count and data"
+        print ("error, dataset doesn't even have count and data")
         return
     count = dataset['count']
     data = dataset['data']

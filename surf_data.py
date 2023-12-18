@@ -2,6 +2,7 @@ import surf
 import numpy as np
 import time
 import sys
+from anita_python.bf import *
 #import h5py
 
 EVENT_BUFFER=int(1024)
@@ -10,10 +11,15 @@ LAB_ADC_BITS=12
 class SurfData:
     def __init__(self):
         self.dev=surf.SURF()
-        self.pedestals=np.zeros((EVENT_BUFFER*4, 12), dtype=np.int)
+        self.pedestals=np.zeros((EVENT_BUFFER*4, 12), dtype=int)
+        ctrl = bf(self.dev.read(0x00010))
+        print('PPSSEL value is', int(ctrl))
+        ctrl[16] = 0
+        self.dev.write(0x00010, int(ctrl))
+        print('PPSSEL value is', int(ctrl))
 
     def start(self):
-        self.pedestals=np.zeros((EVENT_BUFFER*4, 12), dtype=np.int)
+        self.pedestals=np.zeros((EVENT_BUFFER*4, 12), dtype=int)
         self.lab_lut = np.zeros((2**LAB_ADC_BITS, 12), dtype=float)
         self.dev.labc.run_mode(0)
         self.dev.labc.reset_fifo()
@@ -54,8 +60,8 @@ class SurfData:
             sys.stdout.write('saving to file...{:}\n'.format(filename))
             if single_channel == True:
                 d= np.array(data)
-                print d.shape
-                print d[:,1].shape
+                print (d.shape)
+                print (d[:,1].shape)
                 np.savetxt(filename, d[:,CH_to_save,:].reshape(numevent*EVENT_BUFFER, 1))
 
             else:
@@ -77,12 +83,12 @@ class SurfData:
         time.sleep(0.2)
 
         if (numruns % 4) > 0:
-            print 'pedestal run requires numruns be a multiple of 4'
+            print ('pedestal run requires numruns be a multiple of 4')
             return 1
 
         data = self.log(15, numruns, save=False, 
                         subtract_ped=False, unwrap=False)
-        ped_data=np.zeros((4096, 12), dtype=np.int)
+        ped_data=np.zeros((4096, 12), dtype=int)
         
         for i in range(0, len(data)):
             for j in range(0, EVENT_BUFFER):
@@ -173,8 +179,8 @@ class SurfData:
             return pedscan
         
         params=[]
-        print pedscan[int(lo),0]/2
-        print pedscan[int(hi),0]/2
+        print (pedscan[int(lo),0]/2)
+        print (pedscan[int(hi),0]/2)
 
         cell_stack=np.zeros(128)
 

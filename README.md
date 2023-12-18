@@ -19,3 +19,9 @@ git submodule update --init --recursive
 
 There are ways for this to be made automatic if it bothers you to
 remember (aliases).
+
+
+## Note
+simple_script.py: to read data from all LABs using forced trigger,
+simple_script9.py: to read data from single LAB,
+simple_scripts81.py: to read test pattern from single LAB.
