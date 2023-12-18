@@ -1,4 +1,5 @@
 # Python modules for controlling SURF.
+Originally from Patrick Allison: 
 
 These are the SURF-specific Python functions.
 
