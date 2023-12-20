@@ -768,16 +768,16 @@ class SURF(ocpci.Device):
 		labdata = np.zeros(samples, dtype=int)
 		
 		for i in range(0, int(samples), 2):
-				tries=0
-				while (self.labc.check_fifo(1) and (1<<lab)):
-						if tries > max_tries:
-								print ('no data available')
-								break
-						else:
-								tries=tries+1
-								time.sleep(0.005)
+			tries=0
+			while (self.labc.check_fifo(1) and (1<<lab)):
+					if tries > max_tries:
+							print ('no data available')
+							break
+					else:
+							tries=tries+1
+							time.sleep(0.005)
 
-				labdata[i+1], labdata[i] = self.read_fifo(lab)
+			labdata[i+1], labdata[i] = self.read_fifo(lab)
 		return labdata
 
 	def dma_lab_events(self, lab, nevents, samples=1024, force_trig=False, save=False, filename=''):

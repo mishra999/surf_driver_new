@@ -166,21 +166,21 @@ class SurfDaq:
         self.eventsPerTrigger(1)
         self.startAcq()
         dataset = self.getStrippedForceTriggerData(1000)
-        # print(dataset['data'])
+        print(dataset['data'])
         print('length of data', len(dataset['data']))
-        # reshape to 250x4x12x1024
-        byevent = np.reshape(dataset['data'], (250, 4, 1, 1024)) #(250, 4, 12, 1024)
-        # transpose to 12x250x4x1024
-        eventbylab = byevent.transpose(2, 0, 1, 3)
-        # So now index[0] is LAB, index[1] is quad-event, index[2] is buffer (4 buffers per event), and index[3] is sample
+        # # reshape to 250x4x12x1024
+        # byevent = np.reshape(dataset['data'], (250, 4, 1, 1024)) #(250, 4, 12, 1024)
+        # # transpose to 12x250x4x1024
+        # eventbylab = byevent.transpose(2, 0, 1, 3)
+        # # So now index[0] is LAB, index[1] is quad-event, index[2] is buffer (4 buffers per event), and index[3] is sample
 
-        # And now average along index 1
-        pedDataByBuffer = np.mean(eventbylab, 1)
-        # and reshape (this actually copies, because it's non-contiguous)
-        pedData = np.reshape(pedDataByBuffer, (1, 4096)) #(12, 4096)
+        # # And now average along index 1
+        # pedDataByBuffer = np.mean(eventbylab, 1)
+        # # and reshape (this actually copies, because it's non-contiguous)
+        # pedData = np.reshape(pedDataByBuffer, (1, 4096)) #(12, 4096)
 
-        # and we're done
-        self.updatePedestals(pedData)
+        # # and we're done
+        # self.updatePedestals(pedData)
 
     def updatePedestals(self, pedData):
         self.pedestals = pedData
@@ -288,11 +288,12 @@ class SurfDaq:
     def getRawForceTriggerData(self,count=1000):
         """ Get a dataset of force triggers, returned raw. """
         # dat = self.dev.dma_lab_events(lab=15,nevents=count, samples=1024, force_trig=True)
-        self.dev.labc.force_trigger()
-        dat = self.dev.dma_event(samples=1024)
-        # dat = self.dev.log_lab(lab=15, samples=1024, force_trig=True, save=False)
+        # self.dev.labc.force_trigger()
+        # dat = self.dev.dma_event(samples=1024)
+        # dat = self.dev.log_lab(lab=15, samples=1024, force_trig=True, save=False) #to read all LABS
+        dat = self.dev.read_fifo(lab=3, address=0)
         print ("Acquisition complete.")
-        print('dataset raw=', dat[0:100])
+        print('dataset raw=', hex(dat))
         return surf_dataset.buildDataset(dat, count)
 
     def getStrippedForceTriggerData(self,count=1000):
