@@ -288,9 +288,9 @@ class SurfDaq:
     def getRawForceTriggerData(self,count=1000):
         """ Get a dataset of force triggers, returned raw. """
         # dat = self.dev.dma_lab_events(lab=15,nevents=count, samples=1024, force_trig=True)
-        self.dev.labc.force_trigger()
-        dat = self.dev.dma_event(samples=1024)
-        # dat = self.dev.log_lab(lab=15, samples=1024, force_trig=True, save=False)
+        # self.dev.labc.force_trigger()
+        # dat = self.dev.dma_event(samples=1024)
+        dat = self.dev.log_lab(lab=15, samples=1024, force_trig=True, save=False)
         print ("Acquisition complete.")
         print('dataset raw=', dat[0:100])
         return surf_dataset.buildDataset(dat, count)
