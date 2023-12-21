@@ -866,16 +866,16 @@ class SURF(ocpci.Device):
 						
 		board_data = []
 		tries=0
-		'''
-		while(not self.labc.check_fifo()):
+
+		while(self.labc.check_fifo()):
 				if tries > max_tries:
-						print 'no data available'
+						print ('no data available')
 						return 1
 				else:
-						print 'no data available, trying again..'
+						print ('no data available, trying again..')
 						time.sleep(0.05)
 						tries=tries+1
-		'''               
+       
 		for chan in labs:
 				# programmed I/O transfer
 				labdata=self.pio_lab(chan, samples)
